@@ -270,6 +270,12 @@ defmodule Phoenix.LiveView.LiveViewTest do
       assert render(parent) =~ "Toronto"
     end
 
+    @tag session: %{dup: false}
+    test "multiple nested children of same module with new session", %{conn: conn} do
+      {:ok, parent, _} = live(conn, "/same-child")
+      assert render_click(parent, :inc) =~ "Toronto"
+    end
+
     @tag session: %{dup: true}
     test "duplicate nested children raises", %{conn: conn} do
       assert ExUnit.CaptureLog.capture_log(fn ->
@@ -426,11 +432,54 @@ defmodule Phoenix.LiveView.LiveViewTest do
       GenServer.call(thermo_view.pid, {:set, :nest, true})
       assert [clock_view] = children(thermo_view)
 
-      send(clock_view.pid, {:run, fn socket ->
-        {:noreply, LiveView.live_redirect(socket, to: "/anywhere")}
-      end})
+      send(
+        clock_view.pid,
+        {:run,
+         fn socket ->
+           {:noreply, LiveView.live_redirect(socket, to: "/anywhere")}
+         end}
+      )
+
       assert_remove(clock_view, {%ArgumentError{message: msg}, _stack})
       assert msg =~ "attempted to live_redirect from a nested child socket"
+    end
+  end
+
+  describe "live_link" do
+    test "forwards dom attribute options" do
+      dom =
+        LiveView.live_link("next", to: "/", class: "btn btn-large", data: [page_number: 2])
+        |> Phoenix.HTML.safe_to_string()
+
+      assert dom =~ ~s|class="btn btn-large"|
+      assert dom =~ ~s|data-page-number="2"|
+    end
+
+    test "overwrites reserved options" do
+      dom =
+        LiveView.live_link("next", to: "page-1", href: "page-2", data: [phx_live_link: "other"])
+        |> Phoenix.HTML.safe_to_string()
+
+      assert dom =~ ~s|href="page-1"|
+      refute dom =~ ~s|href="page-2"|
+      assert dom =~ ~s|data-phx-live-link="push"|
+      refute dom =~ ~s|data-phx-live-link="other"|
+    end
+  end
+
+  describe "temporary assigns" do
+    test "can only be configured on mount", %{conn: conn} do
+      {:ok, conf_live, html} = live(conn, "/configure")
+
+      assert html == "long description"
+      assert render(conf_live) == "long description"
+      socket = GenServer.call(conf_live.pid, {:exec, fn socket -> {:reply, socket, socket} end})
+
+      assert socket.assigns.description == nil
+
+      assert_raise RuntimeError, ~r/attempted to configure/, fn ->
+        LiveView.configure_temporary_assigns(socket, [:name])
+      end
     end
   end
 end

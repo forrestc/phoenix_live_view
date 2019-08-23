@@ -191,13 +191,17 @@ defmodule Phoenix.LiveViewTest.SameChildLive do
   def render(%{dup: false} = assigns) do
     ~L"""
     <%= for name <- @names do %>
-      <%= live_render(@socket, ClockLive, session: %{name: name}, child_id: name) %>
+      <%= live_render(@socket, ClockLive, session: %{name: name, count: @count}, child_id: name) %>
     <% end %>
     """
   end
 
   def mount(%{dup: dup}, socket) do
-    {:ok, assign(socket, dup: dup, names: ~w(Tokyo Madrid Toronto))}
+    {:ok, assign(socket, count: 0, dup: dup, names: ~w(Tokyo Madrid Toronto))}
+  end
+
+  def handle_event("inc", _, socket) do
+    {:noreply, assign(socket, :count, socket.assigns.count + 1)}
   end
 end
 
@@ -217,11 +221,11 @@ defmodule Phoenix.LiveViewTest.RootLive do
 
   def mount(%{user_id: user_id}, socket) do
     {:ok,
-      socket
-      |> assign(:dynamic_child, false)
-      |> assign_new(:current_user, fn ->
-        %{name: "user-from-root", id: user_id}
-      end)}
+     socket
+     |> assign(:dynamic_child, false)
+     |> assign_new(:current_user, fn ->
+       %{name: "user-from-root", id: user_id}
+     end)}
   end
 
   def handle_call(:show_dynamic_child, _from, socket) do
@@ -270,6 +274,7 @@ defmodule Phoenix.LiveViewTest.ParamCounterLive do
 
   defp do_mount(%{test: %{external_connected_redirect: opts}, test_pid: pid}, socket) do
     %{to: to, stop: stop} = opts
+
     cond do
       connected?(socket) && stop -> {:stop, live_redirect(socket, to: to)}
       connected?(socket) -> {:ok, live_redirect(socket, to: to)}
@@ -314,4 +319,19 @@ defmodule Phoenix.LiveViewTest.ParamCounterLive do
   end
 end
 
+defmodule Phoenix.LiveViewTest.ConfigureLive do
+  use Phoenix.LiveView
 
+  def render(assigns), do: ~L|<%= @description %>|
+
+  def mount(_session, socket) do
+    {:ok,
+     socket
+     |> assign(description: "long description")
+     |> configure_temporary_assigns([:description])}
+  end
+
+  def handle_call({:exec, func}, _from, socket) do
+    func.(socket)
+  end
+end
